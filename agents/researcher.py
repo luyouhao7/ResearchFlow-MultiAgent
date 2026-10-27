@@ -1,4 +1,4 @@
-"""Researcher Agent: attempt tool calling and label deterministic fallback."""
+"""Researcher Agent: LLM may select search_arxiv; Python executes it."""
 from tools.arxiv_search import search_arxiv
 
 def researcher_node(state, model, search_fn=None):
@@ -31,19 +31,23 @@ def researcher_node(state, model, search_fn=None):
         count = min(max(count, 1), 5)
         papers = search_fn({"query": query, "max_results": count})
         results.extend(papers)
-        print(f"[Researcher] LLM selected arXiv query: {query} ({len(papers)} papers)")
+        providers = sorted({p.get("provider", "unknown") for p in papers})
+        print(f"[Researcher] LLM selected search: {query}; provider(s): {providers}; papers: {len(papers)}")
         call["_trace"] = {
             "mode": "llm_tool_call", "tool": "search_arxiv",
-            "query": query, "count": len(papers)
+            "query": query, "count": len(papers),
+            "providers": providers,
         }
     trace = [call["_trace"] for call in calls[:2] if "_trace" in call]
     if not trace:
         results = search_fn({"query": state["query"], "max_results": 5})
+        providers = sorted({p.get("provider", "unknown") for p in results})
         trace = [{
             "mode": "fallback", "tool": "search_arxiv",
-            "query": state["query"], "count": len(results)
+            "query": state["query"], "count": len(results),
+            "providers": providers,
         }]
-        print(f"[Researcher] Fallback search ({len(results)} papers)")
+        print(f"[Researcher] Deterministic tool fallback: {len(results)} papers via {providers}")
     unique = {}
     for paper in results:
         if paper.get("url"):
